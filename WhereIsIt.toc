@@ -1,0 +1,13 @@
+## Interface: 16001, 11509
+## Title: Where Is It
+## Notes: An in-game encyclopedia of where items come from. Tooltip hints plus an Alt-click book with a sketch of the region, written like a field guide: no coordinates, no names.
+## Author: Nick
+## Version: 0.5.0
+## IconTexture: Interface\Icons\INV_Misc_Book_11
+## SavedVariables: WhereIsItDB
+## X-Data-Sources: vmangos world database (github.com/vmangos/core), pfQuest spawn data (github.com/shagu/pfQuest, MIT)
+
+WhereIsIt_Data.lua
+WhereIsIt.lua
+WhereIsIt_Book.lua
+WhereIsIt_Gamepad.lua

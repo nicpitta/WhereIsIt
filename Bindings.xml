@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="WHEREISIT_TOGGLE" category="Where Is It">
+        WhereIsIt_ToggleBook()
+    </Binding>
+</Bindings>
