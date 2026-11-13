@@ -9,11 +9,10 @@ account) are written to the output once, as a table K, and each item's text
 refers to them with {kind|key} tokens that the addon expands when it renders
 the page. That keeps the file to a few megabytes.
 
-Output is a load-on-demand sub-addon, WhereIsIt_Lore, so the main addon stays
-light and the text is only loaded when the book is opened.
+Output is WhereIsIt_Lore.lua, listed in the addon's TOC after the data file.
 
 Usage: python -I tools/build_lore.py --mangos <mangos.sqlite> --pfquest <pfQuest/db>
-         --out WhereIsIt_Lore [--check id ...] [--sample N]
+         --out WhereIsIt_Lore.lua [--check id ...] [--sample N]
 """
 import argparse
 import datetime as dt
@@ -725,7 +724,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mangos", required=True)
     ap.add_argument("--pfquest", required=True)
-    ap.add_argument("--out", required=True, help="directory of the WhereIsIt_Lore sub-addon")
+    ap.add_argument("--out", required=True, help="path of WhereIsIt_Lore.lua in the addon folder")
     ap.add_argument("--check", nargs="*", type=int, default=[])
     ap.add_argument("--sample", type=int, default=0, help="print N random entries to stderr")
     args = ap.parse_args()
@@ -770,18 +769,6 @@ def main():
             for p in expand_tokens(compose(w, item, src, 'A') or '').split("\n"):
                 print("  " + p, file=sys.stderr)
     today = dt.date.today().isoformat()
-    os.makedirs(args.out, exist_ok=True)
-    toc = f"""## Interface: 16001, 11509
-## Title: Where Is It: Lore
-## Notes: The encyclopedia's full accounts of every item, loaded when the book is opened.
-## Author: Nick
-## Version: {today}
-## Dependencies: WhereIsIt
-## LoadOnDemand: 1
-## IconTexture: Interface\\Icons\\INV_Misc_Book_11
-
-WhereIsIt_Lore.lua
-"""
     kb_lines = []
     for kind in sorted(KB):
         kb_lines.append(f"K.{kind}={{}}")
@@ -792,15 +779,13 @@ WhereIsIt_Lore.lua
 -- plus the hand-written knowledge base in tools/lore_world.py, lore_things.py and lore_bespoke.py.
 -- Entries: {len(out_lines)} items ({n_split} with separate Alliance/Horde accounts).
 -- L[id] = "paragraph\\nparagraph" or {{A=..., H=...}}. Passages shared between entries are
--- stored once in K and referenced as {{kind|key}}; the addon expands them when it renders a page.
+-- stored once in K and referenced as {{kind|key}}; the book expands them when it renders a page.
+local _, ns = ...
 local L, K = {{}}, {{}}
-WhereIsIt_LoreData = L
-WhereIsIt_LoreShared = K
-WhereIsIt_LoreVersion = "{today}"
+ns.LoreData, ns.LoreShared = L, K
+ns.LoreVersion = "{today}"
 """
-    with open(os.path.join(args.out, "WhereIsIt_Lore.toc"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(toc)
-    path = os.path.join(args.out, "WhereIsIt_Lore.lua")
+    path = args.out
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(header)
         f.write("\n".join(kb_lines))

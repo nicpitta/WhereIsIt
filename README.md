@@ -22,16 +22,8 @@ lands the hint says so instead ("in Horde territory").
 
 ## Installing
 
-Copy this folder into `Interface\AddOns\WhereIsIt`. The encyclopedia's accounts live in a
-companion addon kept inside it, `WhereIsIt_Lore/`; the game only loads addons from the top
-of `AddOns`, so either copy that folder out beside `WhereIsIt` or make a junction to it:
-
-```bash
-cmd /c mklink /J "Interface\AddOns\WhereIsIt_Lore" "Interface\AddOns\WhereIsIt\WhereIsIt_Lore"
-```
-
-Both addons must be enabled in the addon list. The companion is load-on-demand and only
-loads when the book is opened. Licensed under the MIT License (see `LICENSE`).
+Copy this folder into `Interface\AddOns\WhereIsIt` and enable it in the addon list; there
+is nothing else to set up. Licensed under the MIT License (see `LICENSE`).
 
 ## The encyclopedia
 
@@ -53,8 +45,7 @@ the minimap button, or type `/wii` to open a leather-bound book:
   in the voice of an encyclopaedist: what the thing is, whose work it is, and where and
   from whom it is had, grounded in the land's history and the habits of its peoples. Arrows
   beside the page number, the mouse wheel over the left page, or the controller turn the
-  leaf. The accounts live in the companion addon `WhereIsIt_Lore`, which loads the first time
-  the book is opened, so the tooltip never pays for them.
+  leaf. The accounts live in `WhereIsIt_Lore.lua`, a generated data file like the hints.
 * **The faction ribbon:** a bookmark hanging out from beneath the left page carries
   the crest of the other faction. Click it to read the entry as recorded for them; the
   note at the foot of the page says which faction's record you are reading. The gold *Settings* ribbon at the top opens the options panel.
@@ -115,7 +106,7 @@ checked against the database by name). Passages shared between entries are store
 and expanded when a page is rendered. Regenerate with:
 
 ```bash
-python -I tools/build_lore.py --mangos path/to/mangos.sqlite --pfquest path/to/pfQuest/db --out WhereIsIt_Lore
+python -I tools/build_lore.py --mangos path/to/mangos.sqlite --pfquest path/to/pfQuest/db --out WhereIsIt_Lore.lua
 ```
 
 ## How the hints are built
@@ -144,7 +135,7 @@ Regenerate after downloading the two datasets:
 python -I tools/build_data.py --mangos path/to/mangos.sqlite --pfquest path/to/pfQuest/db --out WhereIsIt_Data.lua
 ```
 
-`tools/check_lua.py <addon dir>` compiles the Lua files (and the lore companion, if built) with a real Lua 5.1 (needs
+`tools/check_lua.py <addon dir>` compiles the Lua files with a real Lua 5.1 (needs
 `pip install lupa`) and exercises the tooltip hook, the book and the search with stubbed
 WoW APIs. `tools/make_media.py` redraws the textures (needs `pip install pillow`).
 

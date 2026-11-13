@@ -4,10 +4,10 @@
 -- Entries: 13338 items (3480 with separate Alliance/Horde accounts).
 -- L[id] = "paragraph\nparagraph" or {A=..., H=...}. Passages shared between entries are
 -- stored once in K and referenced as {kind|key}; the addon expands them when it renders a page.
+local _, ns = ...
 local L, K = {}, {}
-WhereIsIt_LoreData = L
-WhereIsIt_LoreShared = K
-WhereIsIt_LoreVersion = "2026-11-12"
+ns.LoreData, ns.LoreShared = L, K
+ns.LoreVersion = "2026-11-12"
 K.A={}
 K.A["1"]="Cloth is the dress of the spellcasters, who trade protection for the freedom to work the art, and of everyone else when they are not fighting."
 K.A["2"]="Leather armour is the dress of rogues, druids and the lighter hunters, quiet and supple."

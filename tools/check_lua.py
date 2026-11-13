@@ -67,7 +67,6 @@ wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 C_GamePad = { IsEnabled = function() return true end }
 InputUtil = { IsGamepadUIEnabled = function() return true end }
 HandleModifiedItemClick = function() end
-LoadAddOn = function(name) return true end
 SetItemRef = function() end
 IsAltKeyDown = function() return true end
 CreateColor = function(r, g, b, a) return { r = r, g = g, b = b, a = a } end
@@ -89,7 +88,7 @@ def main():
     g = L.globals()
     ns = L.table()
 
-    for fname in ("WhereIsIt_Data.lua", "WhereIsIt.lua", "WhereIsIt_Book.lua", "WhereIsIt_Gamepad.lua"):
+    for fname in ("WhereIsIt_Data.lua", "WhereIsIt_Lore.lua", "WhereIsIt.lua", "WhereIsIt_Book.lua", "WhereIsIt_Gamepad.lua"):
         path = os.path.join(addon_dir, fname)
         with open(path, "rb") as f:
             src = f.read()
@@ -99,15 +98,8 @@ def main():
 
     count = L.eval("function(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end")(ns.Data)
     print(f"data entries: {count}, version {ns.DataVersion}")
-    lore = os.path.join(addon_dir, "WhereIsIt_Lore", "WhereIsIt_Lore.lua")
-    if not os.path.exists(lore):
-        lore = os.path.join(os.path.dirname(os.path.abspath(addon_dir)), "WhereIsIt_Lore", "WhereIsIt_Lore.lua")
-    if os.path.exists(lore):
-        with open(lore, "rb") as f:
-            src = f.read()
-        L.eval("function(src) local f, err = loadstring(src, '@WhereIsIt_Lore.lua'); if not f then error(err) end; return f end")(src)()
-        n = L.eval("function(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end")(g.WhereIsIt_LoreData)
-        print(f"lore entries: {n}, version {g.WhereIsIt_LoreVersion} ({os.path.getsize(lore)/1e6:.1f} MB)")
+    n = L.eval("function(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end")(ns.LoreData)
+    print(f"lore entries: {n}, version {ns.LoreVersion}")
 
     # fire ADDON_LOADED on the loader frame so InitDB/InstallHooks/options run
     fired = L.eval("""function()

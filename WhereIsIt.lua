@@ -72,27 +72,14 @@ local function PlayerFactionKey()
 end
 
 -- Returns a list of hint lines for the item, or nil.
--- The encyclopedia's full accounts live in the load-on-demand sub-addon
--- WhereIsIt_Lore, so the tooltip never pays for them. Loaded the first time
--- the book asks.
-local loreTried
-function ns.LoadLore()
-    if WhereIsIt_LoreData then return true end
-    if loreTried then return false end
-    loreTried = true
-    local load = (C_AddOns and C_AddOns.LoadAddOn) or LoadAddOn
-    if load then pcall(load, "WhereIsIt_Lore") end
-    return WhereIsIt_LoreData ~= nil
-end
-
 -- Paragraphs of the account for an item, with shared passages expanded.
 function ns.GetLore(itemID, facKey)
-    if not ns.LoadLore() then return nil end
-    local entry = WhereIsIt_LoreData[itemID]
+    if not ns.LoreData then return nil end
+    local entry = ns.LoreData[itemID]
     if not entry then return nil end
     local text = type(entry) == "table" and (entry[facKey] or entry.A or entry.H) or entry
     if type(text) ~= "string" then return nil end
-    local shared = WhereIsIt_LoreShared or {}
+    local shared = ns.LoreShared or {}
     text = text:gsub("{(%w+)|([^}]+)}", function(kind, key)
         local t = shared[kind]
         return t and t[key] or ""
@@ -354,7 +341,7 @@ SlashCmdList.WHEREISIT = function(msg)
     elseif cmd == "debug" then
         if ns.Book and ns.Book.DebugReport then ns.Book:DebugReport(Print) else Print("the book file did not load (ns.Book is nil).") end
         if ns.Gamepad and ns.Gamepad.Report then ns.Gamepad:Report(Print)
-            Print("lore: " .. (WhereIsIt_LoreData and ("loaded, " .. (WhereIsIt_LoreVersion or "?")) or "not loaded (opens with the book)")) else Print("gamepad module not loaded.") end
+            Print("lore: " .. (ns.LoreData and ("loaded, " .. (ns.LoreVersion or "?")) or "missing")) else Print("gamepad module not loaded.") end
     elseif cmd == "config" or cmd == "options" then
         OpenOptions()
     elseif cmd == "" and ns.Book then
