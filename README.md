@@ -16,8 +16,11 @@ Examples of what the tooltip shows:
 | Perdition's Blade | Won from the great foes within Molten Core. | same |
 | Thunderfury | Forged at the end of a legendary quest chain. | same |
 
-Regions are filtered by faction: Westfall is never suggested to a Horde player and
-Durotar never to an Alliance player. When the only sources sit in the other faction's
+Where the sources cluster in one part of a region the hint says so ("northern Westfall",
+"the south-western Barrens"), worked out from the spread of their actual spawn points;
+when they cover the whole region no direction is given. Fish name their water where the
+record has one ("Lake Everstill in Redridge Mountains"). Regions are filtered by faction:
+Westfall is never suggested to a Horde player and Durotar never to an Alliance player. When the only sources sit in the other faction's
 lands the hint says so instead ("in Horde territory").
 
 ## Installing
@@ -39,7 +42,8 @@ the minimap button, or type `/wii` to open a leather-bound book:
   teaches), opening with an illuminated initial in the faction's colour.
 * **Right page, the atlas:** *Where to look*, an ink-wash chart of the region where
   the item is most plentiful for your faction, drawn from the client's own map art
-  and glued in with a toasted rim, with a caption. Below it the *Index*: type to search
+  and glued in with a toasted rim, with a caption. A red surveyor's ring marks the
+  stretch of the region where the sources cluster, sized to their spread. Below it the *Index*: type to search
   all 13,000 names, or see recently consulted entries.
 * **The account:** below the entry, or overleaf when it runs long, one or two paragraphs
   in the voice of an encyclopaedist: what the thing is, whose work it is, and where and

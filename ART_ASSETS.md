@@ -181,6 +181,11 @@ Settings ribbon hangs from the top edge 112 px in from the right.
   horizontally, 16 vertically) inside the texture's edge; the rim may feather
   inward over the map, but anything opaque further in hides the map.
 
+### Mark.tga — surveyor's ring on the chart
+* **Size:** 128 x 128. **Render size:** 36 to 170 px square, centred on the spot of the map
+  where the item's sources cluster, sized to their spread. **Tinted** rubric red at 80%.
+  White with alpha only; the centre must stay transparent so the map shows through.
+
 ### Arrow.tga — page-turn arrow
 * **Size:** 32 x 32. **Render size:** 18 x 18, beside the "Next Page" / "Previous Page"
   label centred above the left page's number. **Tinted** faded ink, ink on hover. White

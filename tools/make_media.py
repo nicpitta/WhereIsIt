@@ -571,6 +571,27 @@ def lace():
     save(img, "Lace")
 
 
+def mark():
+    """A hand-inked ring for the atlas: marks the stretch of a region where an
+    item's sources cluster. White with alpha, tinted in-game."""
+    s = 128
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = s / 2
+    for (r, width, alpha) in ((54, 3, 255), (46, 1, 150)):
+        pts = []
+        for i in range(181):
+            a = i / 180 * 2 * math.pi
+            rr = r + 1.6 * math.sin(a * 5 + r) + 0.8 * math.cos(a * 11)
+            pts.append((c + rr * math.cos(a), c + rr * math.sin(a)))
+        d.line(pts, fill=(255, 255, 255, alpha), width=width)
+    # a short tick at the four quarters, as on a surveyor's chart
+    for a in (0, 90, 180, 270):
+        ra = math.radians(a)
+        d.line([(c + 50 * math.cos(ra), c + 50 * math.sin(ra)), (c + 60 * math.cos(ra), c + 60 * math.sin(ra))], fill=(255, 255, 255, 220), width=2)
+    save(img.filter(ImageFilter.GaussianBlur(0.6)), "Mark")
+
+
 def stitch():
     w, h = 32, 8
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -605,5 +626,6 @@ if __name__ == "__main__":
     corner()
     strap()
     lace()
+    mark()
     stitch()
     diamond()

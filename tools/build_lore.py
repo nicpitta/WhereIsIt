@@ -289,6 +289,7 @@ def analyze_creatures(w, entries, fac, mode):
         quest_only = all(v[2] for v in per.values())
     total = sum(x for _, x in weighted) or 1
     return {
+        "focus": B.focus_for_creatures(w, [(n, v[1], v[2]) for n, v in per.items()], zones[0]) if zones else None,
         "zones": zones,
         "desc": B.dominant_descriptor(weighted),
         "boss_share": sum(x for c, x in weighted if (c["rank"] or 0) == 3) / total,
@@ -321,11 +322,28 @@ def chance_sentence(R, desc, ch, where=""):
     return pick(R, [f"It is a very rare find among {who}{where}, the kind of thing found once in a lifetime of hunting them.", f"One of {who} in many hundreds carries it{where}."])
 
 
-def zones_intro(w, zones, R, lead_options):
+def direction_sentence(R, w, zone, focus, what="they"):
+    """A sentence placing the sources within the zone, from their spawn spread."""
+    if not focus or not focus[3] or zone in B.DUNGEON_ZONES:
+        return None
+    noun = B.DIR_NOUN.get(focus[3])
+    if not noun:
+        return None
+    short = place_short(w, zone)
+    if noun == "centre":
+        return pick(R, [f"Within {short}, {what} keep to the heart of the land.", f"Look to the middle of {short}."])
+    return pick(R, [f"Within {short}, {what} keep to the {noun}.", f"Look to the {noun} of {short}.",
+                    f"It is the {noun} of {short} that rewards the search."])
+
+
+def zones_intro(w, zones, R, lead_options, focus=None, what="they"):
     out = [pick(R, lead_options).format(short=place_short(w, zones[0]))]
     d = place_desc_token(w, zones[0])
     if d:
         out.append(d)
+    ds = direction_sentence(R, w, zones[0], focus, what)
+    if ds:
+        out.append(ds)
     if len(zones) > 1:
         out.append(pick(R, [
             f"It is found as readily in {place_short(w, zones[1])}.",
@@ -372,7 +390,7 @@ def expand_drop(w, a, R, fac, mode="drop"):
         return out
     if zones:
         leads = SKIN_LEADS if mode == "skin" else PICK_LEADS if mode == "pick" else DROP_LEADS
-        out.extend(zones_intro(w, zones, R, leads))
+        out.extend(zones_intro(w, zones, R, leads, a["focus"], "they"))
         if glore:
             out.append(glore)
         if mode == "skin":
@@ -436,10 +454,14 @@ def expand_vendor(w, item, entries, fac, R):
         d = place_desc_token(w, zones[0])
         if d:
             out.append(d)
+        sellers_here = [npc for npc in mine if zones[0] in (w.unit_zones.get(npc) or {})]
+        focus = B.focus_for_units(w, sellers_here, zones[0])
         if len(zones) > 1:
             out.append(f"Merchants in {place_short(w, zones[0])} and {place_short(w, zones[1])} stock it.")
         else:
             out.append(f"A merchant in {place_short(w, zones[0])} stocks it.")
+        if focus and focus[3] and B.DIR_NOUN.get(focus[3]) and B.DIR_NOUN[focus[3]] != "centre":
+            out.append(f"The shop is in the {B.DIR_NOUN[focus[3]]} of the land.")
     if any(maxc for _, maxc in mine.values()):
         out.append("Stock is limited, and whoever gets there first takes it.")
     return out
@@ -528,7 +550,9 @@ def expand_objects(w, item, entries, fac, R):
         top = names.most_common(1)[0][0]
         leads = {"herb": ["Herbalists know it from {short}."], "mine": ["Miners know it from {short}."],
                  "chest": ["It is a finder's prize, chiefly in {short}."], "other": ["It is found in {short}."]}[kind]
-        sents = zones_intro(w, zones, R, leads) if zones else []
+        focus = B.focus_for_objects(w, [(go, ch, None) for go, ch, _ in lst], zones[0]) if zones else None
+        what = {"herb": "the plants", "mine": "the veins", "chest": "the caches", "other": "they"}[kind]
+        sents = zones_intro(w, zones, R, leads, focus, what) if zones else []
         where = f" in {place_short(w, zones[0])}" if zones else ""
         if kind == "herb":
             sents.append(pick(R, [f"Herbalists gather it{where}, where it grows thickest.", f"It is the herbalists who bring it in{where}."]))
@@ -548,14 +572,17 @@ def expand_objects(w, item, entries, fac, R):
 
 def expand_fish(w, entries, fac, R):
     zone_score = Counter()
-    for z, ch in entries:
+    area_best = {}
+    for z, ch, area in entries:
         if z is not None:
             zone_score[z] = max(zone_score[z], ch)
+            if ch >= area_best.get(z, (0, None))[0]:
+                area_best[z] = (ch, area)
     zones = B.top_zones(zone_score, lambda z: w.zone_allowed(z, fac), keep_ratio=0.6)
     if not zones:
         return ["Anglers pull it from the waters of Azeroth, though our correspondents disagree on which."]
     name, e, _ = place(w, zones[0])
-    waters = (e or {}).get("waters") or f"the waters of {place_short(w, zones[0])}"
+    waters = B.water_name(w, area_best[zones[0]][1], zones[0]) or (e or {}).get("waters") or f"the waters of {place_short(w, zones[0])}"
     out = zones_intro(w, zones, R, [f"It is a catch of {waters}.", "Anglers know it from {short}."])
     out.append(pick(R, [f"Anglers pull it from {waters}.", f"It is fished from {waters} by anyone with a pole and the patience."]))
     return out

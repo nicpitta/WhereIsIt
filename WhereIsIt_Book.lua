@@ -660,6 +660,9 @@ local function BuildBook()
     R.mapEdge:SetPoint("BOTTOMRIGHT", 14, -14)
     R.mapWash = Fill(R.mapHolder, { 0.93, 0.86, 0.70, 0.12 }, "OVERLAY")
     R.mapWash:SetAllPoints()
+    -- a surveyor's ring inked where the item's sources cluster
+    R.mark = Tex(R.mapHolder, "Mark", "OVERLAY", { RED[1], RED[2], RED[3], 0.8 }, 1)
+    R.mark:Hide()
     R.mapCompass = Tex(R.mapHolder, "Compass", "BACKGROUND", { FADED[1], FADED[2], FADED[3], 0.35 })
     R.mapCompass:SetSize(140, 140)
     R.mapCompass:SetPoint("CENTER")
@@ -830,6 +833,7 @@ function Book:Render()
         R.caption:SetText("")
         R.mapNone:SetText("")
         R.mapCompass:Show()
+        R.mark:Hide()
         DrawMap(R.mapHolder, nil)
         return
     end
@@ -1015,6 +1019,20 @@ function Book:Render()
     local mapID = zone and FindMapID(zone)
     local drawn = mapID and DrawMap(R.mapHolder, mapID)
     R.mapCompass:SetShown(not drawn)
+    -- where on the chart: "x,y,spread" in map percentages
+    local mark = (fac == "H" and extra.mh) or extra.m
+    local mx, my, mr = (mark or ""):match("^([%d.]+),([%d.]+),([%d.]+)$")
+    if drawn and mx then
+        mx, my, mr = tonumber(mx), tonumber(my), tonumber(mr)
+        local mw, mh = R.mapHolder:GetWidth() or 296, R.mapHolder:GetHeight() or 197
+        local size = math.max(36, math.min(170, mr * 3 * mw / 100))
+        R.mark:SetSize(size, size)
+        R.mark:ClearAllPoints()
+        R.mark:SetPoint("CENTER", R.mapHolder, "TOPLEFT", mx / 100 * mw, -my / 100 * mh)
+        R.mark:Show()
+    else
+        R.mark:Hide()
+    end
     if drawn then
         R.mapNone:SetText("")
         R.caption:SetText("Most plentiful in " .. zone .. ".")

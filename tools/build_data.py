@@ -161,6 +161,7 @@ RAID_ZONES = {2717, 2677, 3429, 3428, 3456, 1977, 2159}
 BATTLEGROUND_ZONES = {2597, 3277, 3358}
 BATTLEGROUND_MAPS = {30, 489, 529}
 DUNGEON_ZONES = set(MAP_TO_ZONE.values())
+CITY_ZONES = {1519, 1537, 1657, 1637, 1638, 1497}   # a compass direction inside a city is noise
 
 # Bosses and elites that are summoned by scripts rather than placed in the
 # world, so neither pfQuest nor the creature table knows where they live.
@@ -415,6 +416,72 @@ def join_names(names):
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
+# ---------------------------------------------------------------------------
+# Where within a zone: compass direction from the weighted spread of spawn points
+# (zone-map percentages), never a guess.
+# ---------------------------------------------------------------------------
+DIR_ADJ = {(-1, -1): "north-western", (0, -1): "northern", (1, -1): "north-eastern",
+           (-1, 0): "western", (0, 0): "central", (1, 0): "eastern",
+           (-1, 1): "south-western", (0, 1): "southern", (1, 1): "south-eastern"}
+DIR_NOUN = {"north-western": "north-west", "northern": "north", "north-eastern": "north-east",
+            "western": "west", "central": "centre", "eastern": "east",
+            "south-western": "south-west", "southern": "south", "south-eastern": "south-east"}
+
+
+def spawn_focus(points):
+    """points: [(x, y, weight)] on a zone map (0-100). Returns (cx, cy, spread, adj):
+    the weighted centre, the weighted spread (root of summed variances) and a
+    compass adjective, or None for adj when the sources cover the whole zone."""
+    total = sum(p[2] for p in points)
+    if not points or total <= 0:
+        return None
+    cx = sum(p[0] * p[2] for p in points) / total
+    cy = sum(p[1] * p[2] for p in points) / total
+    var = sum(((p[0] - cx) ** 2 + (p[1] - cy) ** 2) * p[2] for p in points) / total
+    spread = var ** 0.5
+    dx = -1 if cx < 38 else (1 if cx > 62 else 0)
+    dy = -1 if cy < 38 else (1 if cy > 62 else 0)
+    adj = DIR_ADJ[(dx, dy)]
+    if spread > 20 or (adj == "central" and spread > 13):
+        adj = None
+    return cx, cy, spread, adj
+
+
+def focus_for_creatures(w, entries, zone):
+    """entries: [(npc, chance, quest)] -> spawn_focus over their spawns in zone."""
+    pts = []
+    for npc, ch, _ in entries:
+        for x, y in w.unit_pts.get(npc, {}).get(zone, ()):
+            pts.append((x, y, ch))
+    return spawn_focus(pts)
+
+
+def focus_for_objects(w, entries, zone):
+    pts = []
+    for go, ch, _ in entries:
+        for x, y in w.obj_pts.get(go, {}).get(zone, ()):
+            pts.append((x, y, ch))
+    return spawn_focus(pts)
+
+
+def focus_for_units(w, npcs, zone):
+    pts = []
+    for npc in npcs:
+        for x, y in w.unit_pts.get(npc, {}).get(zone, ()):
+            pts.append((x, y, 1.0))
+    return spawn_focus(pts)
+
+
+# per-item accumulator of map marks: zone id -> (cx, cy, spread); reset by render_item
+_MARKS = {}
+
+
+def note_focus(zone, focus):
+    if zone is not None and focus:
+        _MARKS[zone] = (focus[0], focus[1], focus[2])
+    return focus[3] if focus else None
+
+
 def chance_adverb(ch):
     if ch >= 40:
         return "Commonly carried by"
@@ -500,7 +567,9 @@ class World:
         self.area_parent = {}
         self.zone_name = {}
         self.zone_team = {}
+        self.area_name = {}
         for r in self.q("select entry, map_id, zone_id, name, team from area_template"):
+            self.area_name[r["entry"]] = r["name"]
             if r["zone_id"] == 0 or r["entry"] in DUNGEON_ZONES:
                 self.zone_name[r["entry"]] = r["name"]
                 self.zone_team[r["entry"]] = r["team"]
@@ -537,12 +606,19 @@ class World:
         zf = self.zone_fac.get(zone)
         return zf is None or zf == fac
 
-    def zone_display(self, zone):
-        return zone_phrase_name(self.zone_name.get(zone, "parts unknown"))
+    def zone_display(self, zone, adj=None):
+        """'Westfall' / 'northern Westfall' / 'the northern Barrens'."""
+        name = self.zone_name.get(zone, "parts unknown")
+        if adj and zone not in DUNGEON_ZONES and zone not in CITY_ZONES:
+            if name.startswith("The "):
+                return f"the {adj} {name[4:]}"
+            return f"{adj} {name}"
+        return zone_phrase_name(name)
 
-    def zones_phrase(self, zones, prep="in"):
-        """zones: ordered list of zone ids."""
-        names = [self.zone_display(z) for z in zones]
+    def zones_phrase(self, zones, prep="in", dirs=None):
+        """zones: ordered list of zone ids; dirs: {zone: compass adjective}."""
+        dirs = dirs or {}
+        names = [self.zone_display(z, dirs.get(z)) for z in zones]
         if len(zones) == 1 and zones[0] in DUNGEON_ZONES:
             prep = "within"
         return prep + " " + join_names(names)
@@ -569,6 +645,7 @@ class World:
         pf_objects = load_pf_table(os.path.join(self.pf_dir, "objects.lua"))
         self.unit_fac = {}
         self.unit_zones = defaultdict(Counter)   # entry -> Counter(zone -> spawns)
+        self.unit_pts = defaultdict(lambda: defaultdict(list))   # entry -> zone -> [(x, y)]
         for entry, u in pf_units.items():
             if not isinstance(entry, int):
                 continue
@@ -578,13 +655,18 @@ class World:
             for _, co in (u.get("coords") or {}).items():
                 z = self.zone_of(co[3]) if len(co) >= 3 else None
                 self.unit_zones[entry][z] += 1
+                if z is not None and isinstance(co.get(1), (int, float)) and isinstance(co.get(2), (int, float)):
+                    self.unit_pts[entry][z].append((float(co[1]), float(co[2])))
         self.obj_zones = defaultdict(Counter)
+        self.obj_pts = defaultdict(lambda: defaultdict(list))
         for entry, o in pf_objects.items():
             if not isinstance(entry, int):
                 continue
             for _, co in (o.get("coords") or {}).items():
                 z = self.zone_of(co[3]) if len(co) >= 3 else None
                 self.obj_zones[entry][z] += 1
+                if z is not None and isinstance(co.get(1), (int, float)) and isinstance(co.get(2), (int, float)):
+                    self.obj_pts[entry][z].append((float(co[1]), float(co[2])))
         # instance spawns from vmangos (pfQuest has no instance coordinates)
         for r in self.q("select id,id2,id3,id4,id5,map from creature where map not in (0,1) and patch_max>=10"):
             if r["map"] in BATTLEGROUND_MAPS:
@@ -808,7 +890,7 @@ def collect_sources(w):
     for area, rows in w.loot["fishing"].items():
         z = w.zone_of(area)
         for item, (ch, quest) in w.resolve(rows).items():
-            add(item, "fish", (z, ch))
+            add(item, "fish", (z, ch, area))
     # containers
     for cont, rows in w.loot["item"].items():
         if cont not in w.items:
@@ -945,7 +1027,11 @@ def render_creature_line(w, entries, fac, verb_mode="drop"):
             return 35
         return 20
 
-    names = join_names([w.zone_display(z) for z in zones]) if zones else ""
+    dirs = {}
+    for z in zones:
+        if z not in DUNGEON_ZONES:
+            dirs[z] = note_focus(z, focus_for_creatures(w, [(n, v[1], v[2]) for n, v in per_creature.items()], z))
+    names = join_names([w.zone_display(z, dirs.get(z)) for z in zones]) if zones else ""
 
     if verb_mode == "skin":
         t = Counter(c["type"] for c, _ in weighted).most_common(1)[0][0]
@@ -953,7 +1039,7 @@ def render_creature_line(w, entries, fac, verb_mode="drop"):
         band = level_band(w, allowed_weighted or weighted)
         band_txt = f" of {band}" if band and spread >= 3 else ""
         if zones:
-            where = " " + w.zones_phrase(zones)
+            where = " " + w.zones_phrase(zones, "in", dirs)
         elif opposing_only:
             where = f" in {OTHER[fac]} territory"
         else:
@@ -964,7 +1050,7 @@ def render_creature_line(w, entries, fac, verb_mode="drop"):
         return (f"{verb} {desc}{band_txt}{where}.", strength)
     if verb_mode == "pick":
         if zones:
-            where = " " + w.zones_phrase(zones)
+            where = " " + w.zones_phrase(zones, "in", dirs)
         elif opposing_only:
             where = f" in {OTHER[fac]} territory"
         else:
@@ -1037,8 +1123,13 @@ def render_vendor_line(w, item, entries, fac):
             cat = "merchants"
     zones = [z for _, z in sorted(((n, z) for z, n in zone_count.items()), reverse=True)]
     n = len(mine)
+    dirs = {}
+    if n <= 6:
+        for z in zones[:2]:
+            sellers_here = [npc for npc in mine if z in (w.unit_zones.get(npc) or {})]
+            dirs[z] = note_focus(z, focus_for_units(w, sellers_here, z))
     if n == 1:
-        where = (" " + w.zones_phrase(zones[:1])) if zones else ""
+        where = (" " + w.zones_phrase(zones[:1], "in", dirs)) if zones else ""
         line = f"Sold by {singular_vendor(cat)}{where}"
         strength = 80
     elif n >= 8 and len(zones) >= 5:
@@ -1047,9 +1138,9 @@ def render_vendor_line(w, item, entries, fac):
     else:
         strength = 95
         if len(zones) > 2:
-            line = f"Sold by {cat} in {', '.join(w.zone_display(z) for z in zones[:2])} and elsewhere"
+            line = f"Sold by {cat} in {', '.join(w.zone_display(z, dirs.get(z)) for z in zones[:2])} and elsewhere"
         elif zones:
-            line = f"Sold by {cat} {w.zones_phrase(zones)}"
+            line = f"Sold by {cat} {w.zones_phrase(zones, 'in', dirs)}"
         else:
             line = f"Sold by {cat}"
     if limited:
@@ -1090,7 +1181,11 @@ def render_object_lines(w, item, entries, fac):
         allowed_scores = {z: s for z, s in zone_score.items() if z is not None and w.zone_allowed(z, fac)}
         top_s = max(allowed_scores.values()) if allowed_scores else 0
         spread = sum(1 for s in allowed_scores.values() if s >= top_s * 0.1) if top_s else 0
-        where = (" " + w.zones_phrase(zones)) if zones else ""
+        dirs = {}
+        for z in zones:
+            if z not in DUNGEON_ZONES:
+                dirs[z] = note_focus(z, focus_for_objects(w, [(go, ch, None) for go, ch, _ in lst], z))
+        where = (" " + w.zones_phrase(zones, "in", dirs)) if zones else ""
         names, seen = [], set()
         for n, _ in name_score.most_common():
             key = re.sub(r"[^a-z]", "", n.lower())
@@ -1119,11 +1214,25 @@ def render_object_lines(w, item, entries, fac):
     return out
 
 
+def water_name(w, area, zone):
+    """'Lake Everstill in Redridge Mountains' when the fishing table is keyed by a
+    named sub-area of the zone, else None."""
+    if area == zone or area not in w.area_name:
+        return None
+    name = w.area_name[area]
+    if not name or name == w.zone_name.get(zone):
+        return None
+    return f"{zone_phrase_name(name)} in {w.zone_display(zone)}"
+
+
 def render_fish_line(w, entries, fac):
     zone_score = Counter()
-    for z, ch in entries:
+    area_best = {}   # zone -> (chance, area)
+    for z, ch, area in entries:
         if z is not None:
             zone_score[z] = max(zone_score[z], ch)
+            if ch >= area_best.get(z, (0, None))[0]:
+                area_best[z] = (ch, area)
     zones = top_zones(zone_score, lambda z: w.zone_allowed(z, fac), keep_ratio=0.6)
     n_allowed = sum(1 for z in zone_score if w.zone_allowed(z, fac))
     max_ch = max((zone_score[z] for z in zones), default=max(zone_score.values(), default=0))
@@ -1132,10 +1241,14 @@ def render_fish_line(w, entries, fac):
         if zone_score:
             return (f"Fished from waters in {OTHER[fac]} territory.", strength - 15)
         return ("Fished from the waters of Azeroth.", strength - 5)
-    names = join_names([w.zone_display(z) for z in zones])
+    names = []
+    for z in zones:
+        wn = water_name(w, area_best[z][1], z)
+        names.append(wn or w.zone_display(z))
+    names = join_names(names)
     if n_allowed >= 8:
-        return (f"Fished from waters across Azeroth, most readily in {names}.", strength)
-    return (f"Fished from the waters of {names}.", strength)
+        return (f"Fished from waters across Azeroth, most readily from {names}.", strength)
+    return (f"Fished from {names}.", strength)
 
 
 def with_article(name):
@@ -1267,6 +1380,7 @@ def render_uses(w, item, fac):
 
 
 def render_item(w, item, s, fac, max_lines=3):
+    _MARKS.clear()
     lines = {}
     if s.get("vendor"):
         lines["vendor"] = render_vendor_line(w, item, s["vendor"], fac)
@@ -1315,12 +1429,23 @@ def first_zone(w, lines):
     for line in lines:
         best, best_pos = None, None
         for n in names:
-            for variant in (n, zone_phrase_name(n)):
+            variants = [n, zone_phrase_name(n)]
+            if n.startswith("The "):
+                variants.append(n[4:])
+            for variant in variants:
                 pos = line.find(variant)
                 if pos >= 0 and (best_pos is None or pos < best_pos):
                     best, best_pos = n, pos
         if best:
             return best
+    return None
+
+
+def mark_for(w, zone_name, marks):
+    """'x,y,r' for the atlas zone, from the marks noted while rendering."""
+    for z, (cx, cy, r) in marks.items():
+        if w.zone_name.get(z) == zone_name:
+            return f"{cx:.1f},{cy:.1f},{r:.1f}"
     return None
 
 
@@ -1360,7 +1485,9 @@ def main():
         if not it:
             continue
         a = render_item(w, item, src[item], "A", args.max_lines)
+        marks_a = dict(_MARKS)
         h = render_item(w, item, src[item], "H", args.max_lines)
+        marks_h = dict(_MARKS)
         if not a and not h:
             continue
         n_items += 1
@@ -1377,6 +1504,12 @@ def main():
             fields.append(f"z={lua_str(za)}")
         if zh and zh != za:
             fields.append(f"zh={lua_str(zh)}")
+        ma = mark_for(w, za, marks_a) if za else None
+        mh = mark_for(w, zh or za, marks_h) if (zh or za) else None
+        if ma:
+            fields.append(f"m={lua_str(ma)}")
+        if mh and mh != ma:
+            fields.append(f"mh={lua_str(mh)}")
         flavour = (it.get("description") or "").strip()
         if flavour:
             fields.append(f"f={lua_str(flavour)}")
@@ -1396,6 +1529,7 @@ def main():
 -- D[id] = ranked hint lines ("line\\nline..." or {{A=...,H=...}}); the tooltip shows the first few,
 --         the encyclopedia shows them all.
 -- N[id] = item name (for searching).  X[id] = {{z=atlas zone, zh=Horde zone if different,
+--         m="x,y,spread" where the sources cluster on that zone's map (mh for the Horde),
 --         f=flavour text, u=uses, uh=Horde uses if different}}.
 local _, ns = ...
 ns.DataVersion = "{today}"
